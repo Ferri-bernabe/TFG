@@ -1,6 +1,6 @@
 import decimal
 
-class Heuristics:
+class Heuristics2:
     def __init__(self):
         r = []
 
@@ -8,8 +8,8 @@ class Heuristics:
         user_cluster_list = [] #this will be the addresses linked to the user cluster
         #searching all the direct addresses that share transaction with user_address
         user_cluster_list.append(user_address)
-        for transaction in transactions_list:
-            for i, inputs in enumerate(transaction):
+        for i in range(len(transactions_list)):
+            for i, inputs in enumerate(transactions_list[i][1]):
                 if i % 2 == 0: # si el índice es divisible entre 2
                     for inputt in inputs:
                         if user_address in inputt:
@@ -18,8 +18,8 @@ class Heuristics:
                                     user_cluster_list.append(inputs[i][0])
         
         #searching all the indirect addresses that share transaction with a shared adress with user_address
-        for transaction in transactions_list:
-            for i, inputs in enumerate(transaction):
+        for i in range(len(transactions_list)):
+            for i, inputs in enumerate(transactions_list[i][1]):
                 if i % 2 == 0: # si el índice es divisible entre 2 (inputs]
                     for i in range(0,len(inputs)):
                         for clustered_input in user_cluster_list:
@@ -40,8 +40,8 @@ class Heuristics:
         while trobat == False:
             temp_list2 = temp_list.copy()
             for x in temp_list.keys():
-                for transaction in transactions_list:
-                    for i, inputs in enumerate(transaction):
+                for i in range(len(transactions_list)):
+                    for i, inputs in enumerate(transactions_list[i][1]):
                         if i % 2 == 0: # si el índice es divisible entre 2
                             for inputt in inputs:
                                 if x in inputt:
@@ -85,8 +85,8 @@ class Heuristics:
         '''
         all_cluster_list = []
         
-        for transaction in transactions_list:
-            for i,inputs in enumerate(transaction):
+        for i in range(len(transactions_list)):
+            for i,inputs in enumerate(transactions_list[i][1]):
                 if i % 2 == 0:
                     trobat = False
                     for j in range(0, len(inputs)):
@@ -97,7 +97,7 @@ class Heuristics:
                         if trobat:
                             break
                     if trobat == False:
-                        l = self.multipleInputsForUser(inputs[0][0], transactions_list)
+                        l = self.multipleInputsForUserImproved(inputs[0][0], transactions_list)
                         all_cluster_list.append(l)
         return all_cluster_list
 
@@ -150,6 +150,15 @@ class Heuristics:
         else:
             return "no"
 
+    def addressTypeCluster(self, transactions_list):
+        cluster = []
+        for i in range(len(transactions_list)):
+            address = self.adressTypeForTransaction(transactions_list[i][1])
+            if address != "no":
+                temp = [transactions_list[i][0], address]
+                cluster.append(temp)
+        return cluster
+
     def find_decimals(self,value):
         return (abs(decimal.Decimal(str(value)).as_tuple().exponent))
     
@@ -162,12 +171,21 @@ class Heuristics:
         for i,outputs in enumerate(transaction):
             if i%2 != 0:
                 for outputt in outputs:
-                    if self.find_decimals(outputt[1]) <= 2:
+                    if self.find_decimals(outputt[1]) >= 2:
                         temp.append(outputt)
         if (len(temp) > 1 or len(temp) == 0):
             return "no"
         else:
             return temp[0][0]
+        
+    def detectionUsingDecimalPlacesCluster(self, transactions_list):
+        cluster = []
+        for i in range(len(transactions_list)):
+            address = self.detectionUsingDecimalPlaces(transactions_list[i][1])
+            if address != "no":
+                temp = [transactions_list[i][0], address]
+                cluster.append(temp)
+        return cluster
         
     def exactPaymentAmmount(self, transaction):
         #if there is 1 output only, the output will be linked to the user
@@ -192,11 +210,11 @@ class Heuristics:
                     counter = 0
                     trobat = False
                     while(trobat == False):
-                        for transactions in transactions_list:
-                            if transaction == transactions:
+                        for i in range(len(transactions_list)):
+                            if transaction == transactions_list[i][1]:
                                 trobat = True
                                 break
-                            for i,outputts in enumerate(transactions):
+                            for i,outputts in enumerate(transactions_list[i][1]):
                                 if i%2 != 0:
                                     for outputt in outputts:
                                         if output[0] == outputt[0]:
@@ -240,6 +258,15 @@ class Heuristics:
             return candidates[0]
         else:
             return "no"
+        
+    def optimalChangeCluster(self, transactions_list):
+        cluster = []
+        for i in range(len(transactions_list)):
+            address = self.optimalChange(transactions_list[i][1])
+            if address != "no":
+                temp = [transactions_list[i][0], address]
+                cluster.append(temp)
+        return cluster
         
     def tresholdVote(self, transaction, transactions_list):
         treshold = 0.2
@@ -289,8 +316,8 @@ class Heuristics:
         
     def clusterizando(self, transactions_list):
         users_cluster_list = []
-        for transaction in transactions_list:
-            for i, inputs_outputs in enumerate(transaction):
+        for i in range(len(transactions_list)):
+            for i, inputs_outputs in enumerate(transactions_list[i][1]):
                 temp = ""
                 if i % 2 == 0: # si el índice es divisible entre 2
                     for inputt in inputs_outputs:
@@ -303,7 +330,7 @@ class Heuristics:
                         if trobat == False:
                             users_cluster_list.append(self. multipleInputsForUserImproved(inputs_outputs[i][0], transactions_list))        
                             
-                    res = self.tresholdVote(transaction, transactions_list)
+                    res = self.tresholdVote(transactions_list[i][1], transactions_list)
                     if res != "no":
                         if temp != "":
                             for cluster in users_cluster_list:
@@ -314,4 +341,37 @@ class Heuristics:
                                     
         return users_cluster_list
                         
-                    
+    def bip69(self, transaction):
+        trobat = False
+        for i,inputs_outputs in enumerate(transaction):
+            if i%2 == 0:
+                counter = 0
+                temp = []
+                for inputt in inputs_outputs:
+                    counter+=1
+                    if counter > 1:
+                        if inputt[0] < temp[0]:
+                            trobat = True
+                            return "no bip69"
+                        temp = inputt
+                    else:
+                        temp = inputt
+            else:
+                counter = 0
+                temp = ""
+                for outputt in inputs_outputs:
+                    counter +=1
+                    if counter > 1:
+                        if outputt[1] < temp[1]:
+                            trobat = True
+                            return "no bip69"
+                        else:
+                            if outputt[1] == temp[1]:
+                                if outputt[0] < temp[0]:
+                                    trobat = True
+                                    return "no bip69"
+                        temp = outputt
+                    else:
+                        temp = outputt
+        if trobat == False:
+            return "bip69"
