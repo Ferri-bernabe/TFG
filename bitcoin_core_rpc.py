@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import json
+import math
 import requests
 from heuristics import Heuristics
 from anti_heuristics import AntiHeuristics
@@ -30,6 +31,7 @@ The bitcoin.conf file in a mac can be found in
 rpc_user = 'bitcoin'
 rpc_password = 'bitcoin'
 rpc_port = '3133'  # testnet 18332   mainnet 8332  regtest 3133
+fees = 0
 
 def rpc_general_call(method, params):
     """
@@ -137,12 +139,22 @@ def perform_complex_payment(origin_wallet_label, destination_wallet_label, desti
     AntiHeuristicClass = AntiHeuristics(origin_wallet_label)
 
     destination_address = get_new_address(destination_wallet_label, destination_address_type, label='')
+    #Mirar que tingui suficients founds per fer el pagament
+    inputs = rpc_wallet_call("listunspent", {}, origin_wallet_label)
+    total_unspent = 0
+    for inputsGastar in inputs['result']:
+        total_unspent += inputsGastar['amount']
+
+    if total_unspent < value:
+        print("You don't have enough founds :(", total_unspent)
+        return ""
 
     #Create automatic transaction
     automatic_transaction = rpc_wallet_call("createrawtransaction", {"inputs": [], "outputs":[{destination_address: str(value)}] }, origin_wallet_label)
     funded_transaction = rpc_wallet_call("fundrawtransaction", {"hexstring": str(automatic_transaction['result']), "options": {"add_inputs": True, "change_type": "legacy", "fee_rate": str(fee_rate)}}, origin_wallet_label)
     decoded_tx = rpc_wallet_call("decoderawtransaction", {"hexstring": str(funded_transaction['result']['hex'])}, origin_wallet_label)
 
+    fake_initial_fees = fee_rate * decoded_tx['result']['vsize']/100000000
     #catch txid
     transaction_formated = [str(decoded_tx['result']['txid']), list()]
     
@@ -165,6 +177,21 @@ def perform_complex_payment(origin_wallet_label, destination_wallet_label, desti
     trans_final = [inputs, outputs]
     transaction_formated[1] = trans_final[:]
     
+    #calculate initial_fees
+    initial_fees = 0
+    final_fees = 0
+    inputs_amount = 0
+    outputs_amount = 0
+    for i,in_out in enumerate(transaction_formated[1]):
+        if i % 2 == 0:
+            for inputt in in_out:
+                inputs_amount += inputt[1]
+        else:
+            for outputt in in_out:
+                outputs_amount += outputt[1]
+    initial_fees = inputs_amount - outputs_amount
+    print(initial_fees)
+
     #now that we have the formated transaction, this transaction can be analyzed by the heuristics
     #Defensa1
     print("Before anticlustering:")
@@ -183,6 +210,10 @@ def perform_complex_payment(origin_wallet_label, destination_wallet_label, desti
             if l != destination_address:
                 print("Detection Decimal 1 anticlustering...")
                 transaction_formated = AntiHeuristicClass.defensa1DetectionUsingDecimalPlaces(transaction_formated, destination_address)
+                for outputt in transaction_formated[1][1]:
+                    if outputt[0] == destination_address:
+                        if outputt[1] > value:
+                            final_fees += outputt[1]-value
         
         l = HeuristicClass.exactPaymentAmmount(transaction_formated[1])
         if l != "no":
@@ -208,7 +239,7 @@ def perform_complex_payment(origin_wallet_label, destination_wallet_label, desti
             if l != destination_address:
                 print("Detection Decimal 2 anticlustering...")
                 transaction_formated = AntiHeuristicClass.defensa2DetectionUsingDecimalPlaces(transaction_formated, destination_address, destination_wallet_label, destination_address_type)
-    
+
         l = HeuristicClass.exactPaymentAmmount(transaction_formated[1])
         if l != "no":
                 print("Exact Payment 2 anticlustering...")
@@ -219,7 +250,7 @@ def perform_complex_payment(origin_wallet_label, destination_wallet_label, desti
             if l != destination_address:
                 print("Optimal change 2 anticlustering...")
                 transaction_formated = AntiHeuristicClass.defensa2OptimalChange(transaction_formated, destination_address, destination_wallet_label, destination_address_type)
-        
+
     l = HeuristicClass.bip69(transaction_formated[1])
     if l != "bip69":
         print("Bip69 anticlustering...")
@@ -228,8 +259,12 @@ def perform_complex_payment(origin_wallet_label, destination_wallet_label, desti
     print("After anticlustering:")
     print(transaction_formated)
 
-    
     #in this moment we should have a transaction defended
+    #Comprove that no numbers have more than 8 decimals
+    for outputt in transaction_formated[1][1]:
+        if HeuristicClass.find_decimals(outputt[1]) > 8:
+            outputt[1] = math.trunc(outputt[1] * 100000000) / 100000000
+    
     #we have to createrawtransaction again with the inputs and outputs of transaction_formated
     #1. Catch the txid and vout of input adresses
     inputs_arr = []
@@ -246,6 +281,25 @@ def perform_complex_payment(origin_wallet_label, destination_wallet_label, desti
             for outputt in outputss:
                 outputs_dict[str(outputt[0])] = outputt[1]
     
+    #Calculate the final fees
+    #2.Create a fake transaction to know vsize
+    temp_final_trans = rpc_wallet_call("createrawtransaction", {"inputs": inputs_arr, "outputs":outputs_dict }, origin_wallet_label)
+    temp_final_trans_decoded = rpc_wallet_call("decoderawtransaction", {"hexstring": str(temp_final_trans['result'])}, origin_wallet_label)
+    
+    #3.Calculate fees
+    final_fees += (fee_rate * temp_final_trans_decoded['result']['vsize'])/100000000
+
+    #4.Substract final fees in return address
+    for outputt in transaction_formated[1][1]:
+        if outputt[0] != destination_address:
+            outputs_dict[str(outputt[0])] += fake_initial_fees
+            outputs_dict[str(outputt[0])] -= final_fees
+
+    #Comprove that no numbers have more than 8 decimals
+    for clave,valor in outputs_dict.items():
+        if HeuristicClass.find_decimals(valor) > 8:
+            outputs_dict[clave] = math.trunc(outputs_dict[clave] * 100000000) / 100000000
+
     #Create the final transaction
     final_trans = rpc_wallet_call("createrawtransaction", {"inputs": inputs_arr, "outputs":outputs_dict }, origin_wallet_label)
     final_trans_decoded = rpc_wallet_call("decoderawtransaction", {"hexstring": str(final_trans['result'])}, origin_wallet_label)
@@ -262,6 +316,10 @@ def perform_complex_payment(origin_wallet_label, destination_wallet_label, desti
     #Enviar la transacción a la blockchain
     sended_trans = rpc_wallet_call("sendrawtransaction", {"hexstring": str(signed_trans['result']['hex'])}, origin_wallet_label)
     print(sended_trans)
+
+    global fees
+    fees += final_fees - fake_initial_fees
+
     return sended_trans
     
 

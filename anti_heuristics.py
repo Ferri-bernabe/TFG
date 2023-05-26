@@ -385,6 +385,5 @@ class AntiHeuristics:
         
         trans_final = [trans[0], [inputs_final, outputs_final]]
         return trans_final
-
             
 
