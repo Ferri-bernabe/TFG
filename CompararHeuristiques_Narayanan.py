@@ -25,3 +25,11 @@ comparar.compararListas(lista_completa, cluster)
 print("Executant OptimalChangeClustering...")
 cluster = HeuristicClass.optimalChangeCluster(temp)
 comparar.compararListas(lista_completa, cluster)
+
+print("Executant AddressReuseCluster..")
+cluster = HeuristicClass.addressReuseCluster(temp)
+comparar.compararListas(lista_completa, cluster)
+
+print("Executant TresholdVoteCluster...")
+cluster = HeuristicClass.tresholdVoteCluster(temp)
+comparar.compararListas(lista_completa, cluster)

@@ -174,7 +174,7 @@ class Heuristics:
         return (abs(decimal.Decimal(str(value)).as_tuple().exponent))
     
     def detectionUsingDecimalPlaces(self, transaction):
-        #treshold => if an output has 2 decimals or more it's considered an option for being the user's output. Then the 
+        #treshold => if an output has 2 decimals or less it's considered an option for being the user's output. Then the 
         #(treshold will be of 2 decimals more at least)?????.
         
         #1.Look if 1 output has 2 decimal or less, if the list is > 1 then return "no"
@@ -366,6 +366,26 @@ class Heuristics:
             return res[0]
         else:
             return "no"
+        
+    def tresholdVoteCluster(self, transactions_list):
+        cluster = []
+        for i in range(len(transactions_list)):
+            address = self.tresholdVote(transactions_list[i][1], transactions_list)
+            if address != "no":
+                posicio = 0
+                trobat = False
+                for j, outputs in enumerate(transactions_list[i][1]):
+                    if j%2 != 0:
+                        for output in outputs:
+                            if address == output[0]:
+                                trobat = True
+                                break
+                            else:
+                                posicio += 1
+                if trobat == True:
+                    temp = [transactions_list[i][0], str(posicio)]
+                    cluster.append(temp)
+        return cluster
         
     def clusterizando(self, transactions_list):
         users_cluster_list = []
